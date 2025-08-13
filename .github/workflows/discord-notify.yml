@@ -1,0 +1,73 @@
+name: Notify Discord on Push
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  release:
+    types: [published]
+
+jobs:
+  notify-discord:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Send Discord notification for Push
+        if: github.event_name == 'push'
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: https://discord.com/api/webhooks/1392378414526103593/0cCpbWiPo62o26qLAHZZGJsf0Sjlw0bJATqEJ55xurVcW5fDfS18QtKmU-GXIFkBPfCB
+          title: "🚀 Drosera Manager Updated"
+          description: |
+            **Repository:** [0xJhinkz/drosera-manager](https://github.com/0xJhinkz/drosera-manager)
+            **Branch:** `${{ github.ref_name }}`
+            **Commit:** `${{ github.sha }}`
+            **Author:** ${{ github.actor }}
+            
+            📝 **Latest Commit:** ${{ github.event.head_commit.message }}
+            
+            🔗 [View Changes](https://github.com/0xJhinkz/drosera-manager/commit/${{ github.sha }})
+          color: 0x00ff00
+          username: "Drosera Bot 🌱"
+          avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+
+      - name: Send Discord notification for PR
+        if: github.event_name == 'pull_request'
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: https://discord.com/api/webhooks/1392378414526103593/0cCpbWiPo62o26qLAHZZGJsf0Sjlw0bJATqEJ55xurVcW5fDfS18QtKmU-GXIFkBPfCB
+          title: "🔄 Pull Request Activity"
+          description: |
+            **Repository:** [0xJhinkz/drosera-manager](https://github.com/0xJhinkz/drosera-manager)
+            **Action:** ${{ github.event.action }}
+            **PR #${{ github.event.number }}:** ${{ github.event.pull_request.title }}
+            **Author:** ${{ github.actor }}
+            
+            🔗 [View Pull Request](${{ github.event.pull_request.html_url }})
+          color: 0xffaa00
+          username: "Drosera Bot 🌱"
+          avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+
+      - name: Send Discord notification for Release
+        if: github.event_name == 'release'
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: https://discord.com/api/webhooks/1392378414526103593/0cCpbWiPo62o26qLAHZZGJsf0Sjlw0bJATqEJ55xurVcW5fDfS18QtKmU-GXIFkBPfCB
+          title: "🎉 New Release Published!"
+          description: |
+            **Repository:** [0xJhinkz/drosera-manager](https://github.com/0xJhinkz/drosera-manager)
+            **Release:** ${{ github.event.release.tag_name }}
+            **Name:** ${{ github.event.release.name }}
+            
+            📋 **Release Notes:**
+            ${{ github.event.release.body }}
+            
+            📥 [Download Release](${{ github.event.release.html_url }})
+          color: 0xff0080
+          username: "Drosera Bot 🌱"
+          avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"

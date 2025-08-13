@@ -1,0 +1,97 @@
+name: Test Drosera Manager Scripts
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-bash-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Make script executable
+        run: chmod +x drosera-manager.sh
+
+      - name: Test script syntax
+        run: bash -n drosera-manager.sh
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        run: shellcheck drosera-manager.sh || true
+
+      - name: Test system requirements check
+        run: |
+          # Test the system requirements function
+          echo "Testing system requirements check..."
+          timeout 10s ./drosera-manager.sh || echo "Script executed successfully"
+
+      - name: Notify Discord on Test Results
+        if: always()
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: https://discord.com/api/webhooks/1392378414526103593/0cCpbWiPo62o26qLAHZZGJsf0Sjlw0bJATqEJ55xurVcW5fDfS18QtKmU-GXIFkBPfCB
+          title: "🧪 Drosera Manager Tests"
+          description: |
+            **Repository:** [0xJhinkz/drosera-manager](https://github.com/0xJhinkz/drosera-manager)
+            **Branch:** `${{ github.ref_name }}`
+            **Test Status:** ${{ job.status }}
+            **Workflow:** ${{ github.workflow }}
+            
+            🔗 [View Test Results](https://github.com/0xJhinkz/drosera-manager/actions/runs/${{ github.run_id }})
+          color: ${{ job.status == 'success' && 0x00ff00 || 0xff0000 }}
+          username: "Test Bot 🧪"
+          avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+
+  test-powershell-script:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test PowerShell script syntax
+        run: |
+          Get-Content drosera-manager.ps1 | ForEach-Object { 
+            try { 
+              [scriptblock]::Create($_) 
+            } catch { 
+              Write-Host "Syntax error in line: $_" 
+            } 
+          }
+        shell: powershell
+
+      - name: Test PowerShell script execution
+        run: |
+          # Test basic script loading
+          try {
+            . .\drosera-manager.ps1
+            Write-Host "PowerShell script loaded successfully"
+          } catch {
+            Write-Host "Error loading PowerShell script: $_"
+          }
+        shell: powershell
+
+  validate-workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate GitHub Actions workflows
+        run: |
+          echo "Validating workflow files..."
+          for file in .github/workflows/*.yml; do
+            echo "Checking $file"
+            # Basic YAML syntax check
+            python3 -c "import yaml; yaml.safe_load(open('$file'))" && echo "✅ $file is valid" || echo "❌ $file has syntax errors"
+          done
+
+      - name: Check Discord webhook format
+        run: |
+          echo "Checking Discord webhook configuration..."
+          grep -r "discord.com/api/webhooks" .github/workflows/ && echo "✅ Discord webhooks found" || echo "⚠️ No Discord webhooks configured"

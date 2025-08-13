@@ -1,0 +1,1368 @@
+#!/bin/bash
+
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Configuration variables
+DROSERA_HOME="$HOME/drosera-setup"
+TRAP_DIR="$HOME/my-drosera-trap"
+OPERATOR_DIR="$HOME/Drosera-Network"
+DOCKER_COMPOSE_FILE="$OPERATOR_DIR/docker-compose.yaml"
+ENV_FILE="$OPERATOR_DIR/.env"
+DROSERA_CONFIG="$TRAP_DIR/drosera.toml"
+
+# Function to print colored output
+print_status() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+print_header() {
+    echo -e "${BLUE}================================${NC}"
+    echo -e "${BLUE}  $1${NC}"
+    echo -e "${BLUE}================================${NC}"
+}
+
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to check system requirements
+check_system_requirements() {
+    print_header "System Requirements Check"
+    
+    # Check OS
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        print_status "OS: Linux detected"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        print_status "OS: macOS detected"
+    else
+        print_error "Unsupported OS: $OSTYPE"
+        return 1
+    fi
+    
+    # Check Docker
+    if command_exists docker; then
+        print_status "Docker: $(docker --version)"
+    else
+        print_error "Docker not installed"
+        return 1
+    fi
+    
+    # Check Docker Compose
+    if command_exists docker-compose; then
+        print_status "Docker Compose: $(docker-compose --version)"
+    else
+        print_error "Docker Compose not installed"
+        return 1
+    fi
+    
+    # Check Forge (Foundry)
+    if command_exists forge; then
+        print_status "Forge: $(forge --version | head -n1)"
+    else
+        print_warning "Forge not installed - will install if needed"
+    fi
+    
+    # Check system resources
+    local cpu_cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "unknown")
+    local mem_gb=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}' || echo "unknown")
+    
+    print_status "CPU Cores: $cpu_cores"
+    print_status "Memory: ${mem_gb}GB"
+    
+    if [[ "$cpu_cores" != "unknown" && "$cpu_cores" -lt 4 ]]; then
+        print_warning "Recommended: At least 4 CPU cores"
+    fi
+    
+    if [[ "$mem_gb" != "unknown" && "$mem_gb" -lt 8 ]]; then
+        print_warning "Recommended: At least 8GB RAM"
+    fi
+    
+    return 0
+}
+
+# Function to install dependencies
+install_dependencies() {
+    print_header "Installing Dependencies"
+    
+    # Update package manager
+    if command_exists apt-get; then
+        print_status "Updating package list..."
+        sudo apt-get update
+        
+        print_status "Installing required packages..."
+        sudo apt-get install -y curl wget git build-essential
+    elif command_exists yum; then
+        print_status "Installing required packages..."
+        sudo yum install -y curl wget git gcc
+    elif command_exists brew; then
+        print_status "Installing required packages..."
+        brew install curl wget git
+    fi
+    
+    # Install Foundry if not present
+    if ! command_exists forge; then
+        print_status "Installing Foundry..."
+        curl -L https://foundry.paradigm.xyz | bash
+        source ~/.bashrc
+        foundryup
+    fi
+    
+    # Install Docker Compose if not present
+    if ! command_exists docker-compose; then
+        print_status "Installing Docker Compose..."
+        if command_exists apt-get; then
+            # For Ubuntu/Debian
+            sudo apt-get install -y docker-compose-plugin
+            # Also install standalone docker-compose
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+        elif command_exists yum; then
+            # For CentOS/RHEL
+            sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+        elif command_exists brew; then
+            # For macOS
+            brew install docker-compose
+        fi
+    fi
+    
+    # Install Drosera CLI
+    if ! command_exists drosera; then
+        print_status "Installing Drosera CLI..."
+        curl -L https://app.drosera.io/install | bash
+        source ~/.bashrc
+    fi
+    
+    print_status "Dependencies installation completed"
+    print_status "Please restart your terminal or run 'source ~/.bashrc' to refresh your environment"
+}
+
+# Function to save environment variables
+save_env_variables() {
+    local env_file="$1"
+    
+    cat > "$env_file" << EOF
+# Drosera Network Configuration
+# Generated by Drosera Manager powered by 0xm3th
+
+# Network Configuration
+ETH_RPC_URL=$ETH_RPC_URL
+ETH_BACKUP_RPC_URL=https://rpc.hoodi.ethpandaops.io
+ETH_CHAIN_ID=560048
+DROSERA_ADDRESS=0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D
+DROSERA_RPC=https://relay.hoodi.drosera.io
+
+# Private Keys
+DROSERA_PRIVATE_KEY=$DROSERA_PRIVATE_KEY
+ETH_PRIVATE_KEY=$DROSERA_PRIVATE_KEY
+ETH_PRIVATE_KEY2=$OPERATOR2_PRIVATE_KEY
+
+# Server Configuration  
+VPS_IP=$VPS_IP
+SERVER_IP=$VPS_IP
+
+# Operator Configuration
+OP1_KEY=$DROSERA_PRIVATE_KEY
+OP2_KEY=$OPERATOR2_PRIVATE_KEY
+OPERATOR_ADDRESS_1=$OPERATOR_ADDRESS_1
+OPERATOR_ADDRESS_2=$OPERATOR_ADDRESS_2
+
+# Trap Configuration
+TRAP_CONFIG_ADDRESS=$TRAP_CONFIG_ADDRESS
+RESPONSE_CONTRACT=0x25E2CeF36020A736CF8a4D2cAdD2EBE3940F4608
+
+# Discord Configuration
+DISCORD_USERNAME=$DISCORD_USERNAME
+
+# RPC URLs for Docker
+RPC_URL_1=$ETH_RPC_URL
+RPC_URL_2=$ETH_RPC_URL
+EOF
+    
+    print_status "Environment variables saved to $env_file"
+}
+
+# Function to configure drosera.toml
+configure_drosera_toml() {
+    print_header "Configure Drosera Settings"
+    
+    # Check if .env exists and load it
+    local env_file="$TRAP_DIR/.env"
+    if [[ -f "$env_file" ]]; then
+        print_status "Loading existing configuration from .env..."
+        source "$env_file"
+    fi
+    
+    # Get ETH RPC URL
+    echo ""
+    print_status "Ethereum RPC Configuration"
+    echo "You need an Ethereum Hoodi RPC endpoint."
+    echo "Recommended providers:"
+    echo "• Alchemy: https://www.alchemy.com/"
+    echo "• QuickNode: https://www.quicknode.com/"
+    echo "• Infura: https://infura.io/"
+    echo ""
+    read -p "Enter your Ethereum RPC URL [${ETH_RPC_URL:-https://ethereum-hoodi-rpc.publicnode.com}]: " input_rpc
+    ETH_RPC_URL=${input_rpc:-${ETH_RPC_URL:-https://ethereum-hoodi-rpc.publicnode.com}}
+    
+    # Get Private Key
+    echo ""
+    print_status "Private Key Configuration"
+    print_warning "This private key will be used for trap deployment and operator"
+    echo "Make sure this wallet has Hoodi ETH for gas fees"
+    echo ""
+    read -s -p "Enter your private key (without 0x): " input_key
+    echo
+    if [[ -n "$input_key" ]]; then
+        DROSERA_PRIVATE_KEY="$input_key"
+    elif [[ -z "$DROSERA_PRIVATE_KEY" ]]; then
+        print_error "Private key is required!"
+        return 1
+    fi
+    
+    # Get server IP
+    echo ""
+    print_status "Server IP Configuration"
+    local detected_ip=$(curl -s ifconfig.me 2>/dev/null || echo "")
+    read -p "Enter your server IP [${VPS_IP:-$detected_ip}]: " input_ip
+    VPS_IP=${input_ip:-${VPS_IP:-$detected_ip}}
+    
+    # Get operator addresses
+    echo ""
+    print_status "Operator Address Configuration"
+    echo "Enter the addresses that will operate your trap"
+    read -p "Enter Operator 1 address [${OPERATOR_ADDRESS_1:-}]: " input_op1
+    OPERATOR_ADDRESS_1=${input_op1:-$OPERATOR_ADDRESS_1}
+    
+    read -p "Enter Operator 2 address (optional) [${OPERATOR_ADDRESS_2:-}]: " input_op2
+    OPERATOR_ADDRESS_2=${input_op2:-$OPERATOR_ADDRESS_2}
+    
+    # Optional: Second operator private key
+    if [[ -n "$OPERATOR_ADDRESS_2" ]]; then
+        echo ""
+        print_status "Second Operator Private Key (Optional)"
+        read -s -p "Enter second operator private key (press Enter to use same as first): " input_key2
+        echo
+        OPERATOR2_PRIVATE_KEY=${input_key2:-$DROSERA_PRIVATE_KEY}
+    else
+        OPERATOR2_PRIVATE_KEY=""
+    fi
+    
+    # Get trap config address if it exists
+    echo ""
+    print_status "Trap Configuration"
+    read -p "Enter existing trap config address (leave empty for new trap) [${TRAP_CONFIG_ADDRESS:-}]: " input_trap
+    TRAP_CONFIG_ADDRESS=${input_trap:-$TRAP_CONFIG_ADDRESS}
+    
+    # Discord username for Cadet role
+    echo ""
+    print_status "Discord Configuration (Optional)"
+    read -p "Enter your Discord username for Cadet role [${DISCORD_USERNAME:-}]: " input_discord
+    DISCORD_USERNAME=${input_discord:-$DISCORD_USERNAME}
+    
+    # Save to .env file
+    save_env_variables "$env_file"
+    
+    # Create or update drosera.toml
+    print_status "Creating drosera.toml configuration..."
+    
+    local whitelist_array=""
+    if [[ -n "$OPERATOR_ADDRESS_1" ]]; then
+        whitelist_array="\"$OPERATOR_ADDRESS_1\""
+        if [[ -n "$OPERATOR_ADDRESS_2" ]]; then
+            whitelist_array="$whitelist_array, \"$OPERATOR_ADDRESS_2\""
+        fi
+    fi
+    
+    cat > drosera.toml << EOF
+ethereum_rpc = "$ETH_RPC_URL"
+drosera_rpc = "https://relay.hoodi.drosera.io"
+eth_chain_id = 560048
+drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
+
+[traps]
+
+[traps.mytrap]
+path = "out/Trap.sol/Trap.json"
+response_contract = "0x25E2CeF36020A736CF8a4D2cAdD2EBE3940F4608"
+response_function = "respond(string)"
+cooldown_period_blocks = 33
+min_number_of_operators = 1
+max_number_of_operators = 2
+block_sample_size = 10
+private_trap = true
+whitelist = [$whitelist_array]
+address = "${TRAP_CONFIG_ADDRESS:-}"
+EOF
+    
+    print_status "✅ Configuration completed!"
+    print_status "📁 Files created:"
+    print_status "   • drosera.toml - Trap configuration"
+    print_status "   • .env - Environment variables"
+    echo ""
+    print_status "🔧 You can now:"
+    print_status "   1. Deploy the trap"
+    print_status "   2. Send bloom boost"
+    print_status "   3. Opt-in operators"
+}
+
+# Function to send bloom boost
+send_bloom_boost() {
+    print_header "Send Bloom Boost"
+    
+    # Load environment variables
+    local env_file="$TRAP_DIR/.env"
+    if [[ ! -f "$env_file" ]]; then
+        print_error "No .env file found. Please configure drosera.toml first."
+        return 1
+    fi
+    
+    source "$env_file"
+    
+    if [[ -z "$TRAP_CONFIG_ADDRESS" ]]; then
+        print_error "No trap config address found. Please deploy a trap first."
+        return 1
+    fi
+    
+    print_status "Sending bloom boost to trap: $TRAP_CONFIG_ADDRESS"
+    print_status "Using RPC: $ETH_RPC_URL"
+    
+    # Send bloom boost command
+    if command_exists drosera; then
+        print_status "Executing bloom boost..."
+        DROSERA_PRIVATE_KEY="$DROSERA_PRIVATE_KEY" drosera bloom-boost \
+            --eth-rpc-url "$ETH_RPC_URL" \
+            --trap-config-address "$TRAP_CONFIG_ADDRESS"
+        
+        if [[ $? -eq 0 ]]; then
+            print_status "✅ Bloom boost sent successfully!"
+        else
+            print_error "❌ Failed to send bloom boost"
+        fi
+    else
+        print_error "Drosera CLI not found. Please install dependencies first."
+    fi
+}
+
+# Function to opt-in operators
+optin_operators() {
+    print_header "Opt-in Operators"
+    
+    # Load environment variables
+    local env_file="$TRAP_DIR/.env"
+    if [[ ! -f "$env_file" ]]; then
+        print_error "No .env file found. Please configure drosera.toml first."
+        return 1
+    fi
+    
+    source "$env_file"
+    
+    if [[ -z "$TRAP_CONFIG_ADDRESS" ]]; then
+        print_error "No trap config address found. Please deploy a trap first."
+        return 1
+    fi
+    
+    print_status "Opt-in operators to trap: $TRAP_CONFIG_ADDRESS"
+    print_status "Using RPC: $ETH_RPC_URL"
+    
+    # Opt-in first operator
+    if [[ -n "$DROSERA_PRIVATE_KEY" ]]; then
+        print_status "Opting in Operator 1..."
+        if command_exists drosera-operator; then
+            drosera-operator optin \
+                --eth-rpc-url "$ETH_RPC_URL" \
+                --eth-private-key "$DROSERA_PRIVATE_KEY" \
+                --trap-config-address "$TRAP_CONFIG_ADDRESS"
+        else
+            print_warning "drosera-operator CLI not found. Using alternative method..."
+            # Alternative method using drosera CLI
+            DROSERA_PRIVATE_KEY="$DROSERA_PRIVATE_KEY" drosera optin \
+                --eth-rpc-url "$ETH_RPC_URL" \
+                --trap-config-address "$TRAP_CONFIG_ADDRESS"
+        fi
+        
+        if [[ $? -eq 0 ]]; then
+            print_status "✅ Operator 1 opted in successfully!"
+        else
+            print_error "❌ Failed to opt-in Operator 1"
+        fi
+    fi
+    
+    # Opt-in second operator if exists
+    if [[ -n "$OPERATOR2_PRIVATE_KEY" && "$OPERATOR2_PRIVATE_KEY" != "$DROSERA_PRIVATE_KEY" ]]; then
+        print_status "Opting in Operator 2..."
+        if command_exists drosera-operator; then
+            drosera-operator optin \
+                --eth-rpc-url "$ETH_RPC_URL" \
+                --eth-private-key "$OPERATOR2_PRIVATE_KEY" \
+                --trap-config-address "$TRAP_CONFIG_ADDRESS"
+        else
+            # Alternative method using drosera CLI
+            DROSERA_PRIVATE_KEY="$OPERATOR2_PRIVATE_KEY" drosera optin \
+                --eth-rpc-url "$ETH_RPC_URL" \
+                --trap-config-address "$TRAP_CONFIG_ADDRESS"
+        fi
+        
+        if [[ $? -eq 0 ]]; then
+            print_status "✅ Operator 2 opted in successfully!"
+        else
+            print_error "❌ Failed to opt-in Operator 2"
+        fi
+    fi
+    
+    print_status "🎯 You can also opt-in via Dashboard:"
+    print_status "   1. Visit: https://app.drosera.io/"
+    print_status "   2. Connect your operator wallet"
+    print_status "   3. Find your trap and click 'Opt-in'"
+}
+
+# Function to configure firewall
+configure_firewall() {
+    print_header "Configuring UFW Firewall"
+    
+    if command_exists ufw; then
+        print_status "Configuring UFW firewall with proper rules..."
+        
+        # Enable firewall with SSH access
+        print_status "Allowing SSH access..."
+        sudo ufw allow ssh
+        sudo ufw allow 22
+        
+        print_status "Enabling UFW firewall..."
+        sudo ufw --force enable
+        
+        # Allow Drosera ports
+        print_status "Allowing Drosera ports..."
+        sudo ufw allow 31313/tcp
+        sudo ufw allow 31314/tcp
+        
+        # Check if we need additional ports for second operator
+        if [[ -n "$OP2_KEY" || -n "$OPERATOR2_PRIVATE_KEY" ]]; then
+            print_status "Allowing additional operator ports..."
+            sudo ufw allow 31315/tcp
+            sudo ufw allow 31316/tcp
+        fi
+        
+        # Show current status
+        print_status "UFW firewall configured successfully!"
+        echo ""
+        print_status "Current UFW status:"
+        sudo ufw status
+        
+    else
+        print_error "UFW not found. Installing UFW..."
+        sudo apt-get update
+        sudo apt-get install -y ufw
+        
+        if command_exists ufw; then
+            print_status "UFW installed. Configuring now..."
+            configure_firewall
+        else
+            print_error "Failed to install UFW firewall"
+        fi
+    fi
+}
+
+# Function to deploy new trap
+deploy_new_trap() {
+    print_header "Deploy New Drosera Trap"
+    
+    # Check if trap directory exists
+    if [[ ! -d "$TRAP_DIR" ]]; then
+        print_status "Creating trap directory..."
+        mkdir -p "$TRAP_DIR"
+        cd "$TRAP_DIR"
+        
+        # Initialize Foundry project with embedded Drosera template
+        print_status "Initializing Foundry project with embedded Drosera trap template..."
+        
+        # Copy template files from the repository
+        if [[ -f "$DROSERA_HOME/../foundry.toml" ]]; then
+            print_status "Copying embedded template files..."
+            cp "$DROSERA_HOME/../foundry.toml" . 2>/dev/null || true
+            cp "$DROSERA_HOME/../package.json" . 2>/dev/null || true
+            cp "$DROSERA_HOME/../.gitmodules" . 2>/dev/null || true
+            cp "$DROSERA_HOME/../Makefile" . 2>/dev/null || true
+            cp "$DROSERA_HOME/../setup.sh" . 2>/dev/null || true
+            cp "$DROSERA_HOME/../env.example" . 2>/dev/null || true
+            
+            # Create directories and copy files
+            mkdir -p src test script
+            cp "$DROSERA_HOME/../src/Trap.sol" src/ 2>/dev/null || true
+            cp "$DROSERA_HOME/../test/Trap.t.sol" test/ 2>/dev/null || true
+            cp "$DROSERA_HOME/../script/Deploy.s.sol" script/ 2>/dev/null || true
+            
+            # Make setup script executable
+            chmod +x setup.sh 2>/dev/null || true
+            
+            print_status "Template files copied successfully!"
+        else
+            # Fallback to forge init with template
+            print_status "Embedded template not found, using forge init..."
+            forge init -t drosera-network/trap-foundry-template --no-commit .
+        fi
+        
+        print_status "Drosera trap template initialized successfully!"
+        print_status "Template includes:"
+        print_status "- Pre-configured foundry.toml and drosera.toml"
+        print_status "- Example Trap.sol and DiscordCadetTrap contracts"
+        print_status "- Comprehensive test suite"
+        print_status "- Deployment scripts and Makefile"
+        print_status "- Setup script for easy initialization"
+    else
+        cd "$TRAP_DIR"
+        print_status "Trap directory already exists at: $TRAP_DIR"
+        
+        # Check if it's using Drosera template
+        if [[ ! -f "drosera.toml" ]]; then
+            print_warning "This directory doesn't appear to use the Drosera template"
+            read -p "Do you want to reinitialize with Drosera template? (y/n): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                print_status "Backing up existing files..."
+                mv . ../trap-backup-$(date +%s) 2>/dev/null || true
+                mkdir -p "$TRAP_DIR"
+                cd "$TRAP_DIR"
+                forge init -t drosera-network/trap-foundry-template --no-commit .
+                print_status "Reinitialized with Drosera template"
+            fi
+        else
+            print_status "Directory already uses Drosera template"
+        fi
+    fi
+    
+    # Configure drosera.toml with user inputs
+    configure_drosera_toml
+    
+    # Ask if user wants to deploy now
+    read -p "Do you want to deploy the trap now? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        deploy_trap
+    fi
+}
+
+# Function to deploy trap
+deploy_trap() {
+    print_header "Deploying Trap"
+    
+    cd "$TRAP_DIR"
+    
+    # Check if drosera.toml is configured
+    if grep -q "YOUR_OPERATOR_ADDRESS" drosera.toml; then
+        print_error "Please configure drosera.toml first"
+        return 1
+    fi
+    
+    # Build the contract
+    print_status "Building contract..."
+    forge build
+    
+    # Test the trap
+    print_status "Testing trap..."
+    drosera dryrun
+    
+    # Deploy the trap
+    print_status "Deploying trap..."
+    read -s -p "Enter your private key: " PRIVATE_KEY
+    echo
+    
+    DROSERA_PRIVATE_KEY="$PRIVATE_KEY" drosera apply
+    
+    print_status "Trap deployment completed"
+}
+
+# Function to deploy Discord Cadet role trap
+deploy_discord_cadet_trap() {
+    print_header "Deploy Discord Cadet Role Trap"
+    
+    # Get Discord username first
+    read -p "Enter your Discord username: " DISCORD_USERNAME
+    
+    # Check if trap directory exists
+    if [[ ! -d "$TRAP_DIR" ]]; then
+        print_status "Creating trap directory..."
+        mkdir -p "$TRAP_DIR"
+        cd "$TRAP_DIR"
+        
+        # Initialize Foundry project with Drosera template
+        print_status "Initializing Foundry project with Drosera trap template..."
+        forge init -t drosera-network/trap-foundry-template --no-commit .
+        
+        print_status "Drosera trap template initialized for Discord Cadet setup!"
+    else
+        cd "$TRAP_DIR"
+        print_status "Using existing trap directory at: $TRAP_DIR"
+        
+        # Check if it's using Drosera template
+        if [[ ! -f "drosera.toml" ]]; then
+            print_warning "This directory doesn't appear to use the Drosera template"
+            read -p "Do you want to reinitialize with Drosera template? (y/n): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                print_status "Backing up existing files..."
+                mv . ../trap-backup-discord-$(date +%s) 2>/dev/null || true
+                mkdir -p "$TRAP_DIR"
+                cd "$TRAP_DIR"
+                forge init -t drosera-network/trap-foundry-template --no-commit .
+                print_status "Reinitialized with Drosera template"
+            fi
+        fi
+    fi
+    
+    # Create Discord Cadet specific Trap.sol contract
+    print_status "Creating Discord Cadet Trap.sol contract..."
+    cat > src/Trap.sol << EOF
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import {ITrap} from "drosera-contracts/interfaces/ITrap.sol";
+
+interface IMockResponse {
+    function isActive() external view returns (bool);
+}
+
+contract Trap is ITrap {
+    // Updated response contract address for Discord Cadet
+    address public constant RESPONSE_CONTRACT = 0x25E2CeF36020A736CF8a4D2cAdD2EBE3940F4608;
+    string constant discordName = "$DISCORD_USERNAME"; // Your Discord username
+
+    function collect() external view returns (bytes memory) {
+        bool active = IMockResponse(RESPONSE_CONTRACT).isActive();
+        return abi.encode(active, discordName);
+    }
+
+    function shouldRespond(bytes[] calldata data) external pure returns (bool, bytes memory) {
+        (bool active, string memory name) = abi.decode(data[0], (bool, string));
+        if (!active || bytes(name).length == 0) {
+            return (false, bytes(""));
+        }
+
+        return (true, abi.encode(name));
+    }
+}
+EOF
+    
+    # Create drosera.toml configuration for Discord Cadet
+    print_status "Creating drosera.toml configuration for Discord Cadet..."
+    cat > drosera.toml << 'EOF'
+ethereum_rpc = "https://ethereum-hoodi-rpc.publicnode.com"
+drosera_rpc = "https://relay.hoodi.drosera.io"
+eth_chain_id = 560048
+drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
+
+[traps]
+
+[traps.discordcadet]
+path = "out/Trap.sol/Trap.json"
+response_contract = "0x25E2CeF36020A736CF8a4D2cAdD2EBE3940F4608"
+response_function = "respondWithDiscordName(string)"
+cooldown_period_blocks = 33
+min_number_of_operators = 1
+max_number_of_operators = 2
+block_sample_size = 10
+private_trap = true
+whitelist = ["YOUR_OPERATOR_ADDRESS"]
+address = "YOUR_TRAP_CONFIG_ADDRESS"
+EOF
+    
+    print_warning "Please edit drosera.toml with your specific configuration"
+    print_status "Discord Cadet trap setup completed in: $TRAP_DIR"
+    
+    # Ask if user wants to deploy now
+    read -p "Do you want to deploy the Discord Cadet trap now? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        deploy_trap
+    fi
+}
+
+# Function to relocate Drosera to this machine
+relocate_drosera() {
+    print_header "Relocate Drosera to This Machine"
+    
+    # Check if operator directory exists
+    if [[ ! -d "$OPERATOR_DIR" ]]; then
+        print_status "Creating operator directory..."
+        mkdir -p "$OPERATOR_DIR"
+    fi
+    
+    cd "$OPERATOR_DIR"
+    
+    # Get server IP
+    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")
+    print_status "Detected server IP: $SERVER_IP"
+    
+    # Get private keys
+    read -s -p "Enter Operator 1 private key: " OP1_KEY
+    echo
+    read -s -p "Enter Operator 2 private key (optional, press Enter to skip): " OP2_KEY
+    echo
+    
+    # Create .env file
+    print_status "Creating .env file..."
+    cat > .env << EOF
+SERVER_IP=$SERVER_IP
+OP1_KEY=$OP1_KEY
+OP2_KEY=$OP2_KEY
+EOF
+    
+    # Create docker-compose.yaml following 0xmoei repository structure
+    print_status "Creating docker-compose.yaml..."
+    cat > docker-compose.yaml << 'EOF'
+version: '3'
+services:
+  drosera1:
+    image: ghcr.io/drosera-network/drosera-operator:latest
+    container_name: drosera-node1
+    network_mode: host
+    volumes:
+      - drosera_data1:/data
+    command: node --db-file-path /data/drosera.db --network-p2p-port 31313 --server-port 31314 --eth-rpc-url ${RPC_URL_1} --eth-backup-rpc-url https://rpc.hoodi.ethpandaops.io --drosera-address 0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D --eth-private-key ${ETH_PRIVATE_KEY} --listen-address 0.0.0.0 --network-external-p2p-address ${VPS_IP} --disable-dnr-confirmation true
+    restart: always
+
+volumes:
+  drosera_data1:
+EOF
+    
+    # Add second operator if provided
+    if [[ -n "$OP2_KEY" ]]; then
+        print_status "Adding second operator..."
+        cat >> docker-compose.yaml << 'EOF'
+
+  drosera2:
+    image: ghcr.io/drosera-network/drosera-operator:latest
+    container_name: drosera-node2
+    network_mode: host
+    volumes:
+      - drosera_data2:/data
+    command: node --db-file-path /data/drosera.db --network-p2p-port 31315 --server-port 31316 --eth-rpc-url ${RPC_URL_2} --eth-backup-rpc-url https://rpc.hoodi.ethpandaops.io --drosera-address 0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D --eth-private-key ${ETH_PRIVATE_KEY2} --listen-address 0.0.0.0 --network-external-p2p-address ${VPS_IP} --disable-dnr-confirmation true
+    restart: always
+
+volumes:
+  drosera_data1:
+  drosera_data2:
+EOF
+    fi
+    
+    # Configure firewall
+    configure_firewall
+    
+    # Start operators
+    print_status "Starting operators..."
+    docker-compose up -d
+    
+    print_status "Drosera relocation completed"
+    print_status "Operators are running in: $OPERATOR_DIR"
+}
+
+# Function to buy unlimited call/request RPC
+buy_rpc() {
+    print_header "Get Unlimited Call/Request RPC"
+    
+    # Premium RPC Service ASCII Logo
+    echo -e "${PURPLE}"
+    cat << 'EOF'
+                      ..:::::-------::::..                                      
+                                      .-*%@@@@@@@@@@@@@@@@@@@@@#=:.                                 
+                               .:=*#%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%#*+-.                           
+                           .:-+%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#=:..                      
+                          -#@@@@@@@@@@@@@@@@@@%%##****##%%@@@@@@@@@@@@@@@@@@%=.                     
+                      .:*%@@@@@@@@@@@@%*+++*###%%%%%%%%%%###**+++#%@@@@@@@@@@@%#=.                  
+                   ..-#@@@@@@@@@@@%#++*#%%%%#################%%%%*++*#%@@@@@@@@@@%=:                
+                  .-#@@@@@@@@@@#==#@@***%@@@@@@@@@@@@@@@@@@@@@@%#**%@%+=*@@@@@@@@@@%+.              
+                 -*@@@@@@@@@#+*#%##%%@@@@@@@@@@@@@%%%%%@@@@@@@@@@@@%%###%#+*%@@@@@@@@%=             
+               :+%@@@@@@@%*+*####%@@@@@@@%#**++==+++++++==++*#%@@@@@@@@%##%#+*#@@@@@@@@*:.          
+             .-%@@@@@@@@+=%%*#@@@@@@@@#==+********#*******##**+==#%@@@@@@@@*%@++#@@@@@%@@=..        
+           ..+%@@@@@@%*+##*%@@@@@@@#+=+**************************+++*%@@@@@@%###*+%@@@@@@@*:        
+          ..#@@@@@@@#+*%##@@@@@@%*=+******************++************+=+%@@@@@@%#%#+*@@@@@@@#-.      
+         ..#@@@@@@@*+%%*@@%%%@%*=+********************==+**************=+%@%@%@@%#%*+%@@@@@@%=.     
+        .:#@@@@@@%+*%#%@%%%%%#==++++++++++++++++-=++++===-=+++++++++++++=-*%%%%%@%###=#@@@@@@%=.    
+       .:*@@@@@@%**%#%%%###%+=+*+++************+=**++*+++++*++************-=#####%%##%=#@@@@@@#=.   
+       :+@@@@@@%+#%#%%%%%%%+=****+=+#***********+*-#%+----=+##-+***********+=#%%%%%@%#%=#@@@@@@#-   
+      .=@@@@@@%+*%#%%###%%==++++++=+*++++++++++=:.+@#%#**#%%@%##==+++++++++*==*###%%@%#%=%@@@@@@#.  
+      :#@@@@@@+#%#%%#####+-+++++++=++++++++++++***#*****#%*#*#*##++++++++++++==*####%%#%%+%@@@@@%=  
+     .=@@@@@@#+%#%%######=***++**=-=****+*##*++++#*###*#%%#==-%%#*+*********#*=*#####%@*%**%@@@@@#. 
+     -#@@@@@@=%#%%######==++*=++=====+-#%#****###%%%%*##*+#+***###+=+*+*+*****==*#####%%#%+#@@@@@%= 
+    .+@@@@@@**%#%#**#***-==-==-=----::#@##%%%%%%@%%@##%#+==*#=-+###+=++==++=+==-+##***#@#%**%@@@@@%.
+    -#@@@@@@=%#%%#****#+:==:=------..*@%%@@@@@%%*@@%*%####**+**%%%%*=-===-===-=-=******%@#%+#@@@@@@=
+    -#@@@@@%=%#%%#*###*+:==-=--------@@@@@##%##%###*#**##*#%*%*+#+*#*--===--===-=*###**#@#%**@@@@@@+
+    =%@@@@@#+%#%#******=:--:-:::::::#@#####%%%%%%%@@#*==+*##*%#+-=*%#-:----::--:-+******%#%**%@@@@@*
+    +%@@@@@**%%%*======-.::.::.::=*#@@@@@@%####%%##%***+=**+*******#@%*-:.::.::::=======%#%#*%@@@@@%
+    *@@@@@@**%%%*====+=-.:..*%@@@@@@@@@@@%#####*###%***#%%%%@%#%%++#%#**++#:..::-=++====%#%#*#@@@@@@
+    *@@@@@@**%%%*+++++++....*@##@%*#@%*%@#*+=+*+#-+%+++##++*%#++%+=#@#++++@:....-++++++=%#%#*%@@@@@@
+    +%@@@@@#*%%@*--=--=+**-:#%++@#-*@*:#@*=+++++++*#+=+**=+*#*++%+=#@*::::@::-+**=-----=%#%##%@@@@@#
+    =%@@@@@%*%#%#==+#%@@%%%%@@@@@@%@@@%@@#+++++++=*%***####*%**%%*+#@%%%%%@%%%#%@@@%+==+@#%##@@@@@@*
+    -#@@@@@@*@#%@@%%@@@@%%%@@@@@@@@@@@@@@%%%%%%%%%%@%%%%@@@%@%%%@%%@@@@@@@@@%%@@@@@@%%%@@#%##@@@@@@=
+    :*@@@@@@#%%#%%%%%%%%%%%%%###%%%%%%%%%%%%%%#%%#@%%@##%%#%@%%%%@%%%%%%%##%%%%%##%%%%%@#%%#%@@@@@@-
+    .+@@@@@@@#@#%@%#%%%###%%%%###%%@%%##%%%##%%%*%@##%%##@%#*#%@###%@%%###%%%%###%%%%#@%#@#%@@@@@@@.
+     -#@@@@@@#%%%%@%%%%@@%%##%%@@%#*#%%%#**%@%#*%@@#*%@%**%@@#+*%@%####@@@%%%%%%@%%%%%@#%%#%@@@@@@+ 
+     .=@@@@@@@#%%%@@@@%%#%@@@@%#*+#@@@%++%@@%#+%@@@**%@@%*+%@@@*+*%@@%*+*%@@@@@%#%%@@@%#@#%@@@@@@#. 
+      :*@@@@@@%%%%%@@@@@@@@%*++#%@@%*+*%@@@%*+%@@@@*+%@@@%*+#@@@@#+*%@@@%*=+#@@@@@@@@%#@#%@@@@@@%-  
+      .-%@@@@@@%%%%%@@@@%#++*%%@@%*+*%@@@@%++#@@@@@++%@@@@%*=#@@@@%#+*#%@@%#++*#%@@@@#@%%@@@@@@@*.  
+       .+@@@@@@@%%%%%@#+=*%%%@@%*+*%@%%@@#++%@%%@@@++%@@%%@%*=*@@%%@@#++#@@%@@#+=*%%#%%%@@@@@@@#:   
+       .:+@@@@@@@%%%%%@%%##@@#++#%@%#%@@*=+%@%%%%%%++%%%%%%@@*-*%@%%%%@#+=#%@%#%%@%#%%%@@@@@@@#-.   
+        .:*@@@@@@@@%%%#@@###***#%#*#%#%*=+#%%%##%%#++#%%#*#%%#*=+####*#%##*+###%@%%%%@@@@@@@@#-.    
+          .*@@@@@@@@%@%#%@%*%@@@%#%@@@*+*%@@@%#@@@%++#@@@%%@@@@#=+%@@@##@@@%*#%%#%@%@@@@@@@@#-      
+          ..+@@@@@@@@%%@%#%@@@%##@@@%***%@@@@%#@@@%**#@@@%*@@@@@#**#@@@%*#@@@%#%@@%@@@@@@@@#-.      
+             -%@@@@@@@@@%@%#%%%%@@@%###%@@@@%##@@@%**#@@@%##@@@@@###%@@@@#%%%%%%%@@@@@@@@@+:        
+              :#@@@@@@@@@%@@%#%@@@%#%#@@@@@@#*@@@@%###%@@@#*@@@@@@%##%%@@%%#@@%@@@@@@@@@%-.         
+               .=%@@@@@@@@@@@%%%#%@@%*******+=****#####****=*******%%@@%#%%%@@@@@@@@@@@*:.          
+                 :+%@@@@@@@@@@@@@%%%#%@@@@@%#%@@@@%%%%@@@@@##@@@@@@%%%%%@@@@@@@@@@@@@#-             
+                   :+%@@@@@@@@@@@@%@@%##%%%%%@@@@@%%%%@@@@@@%@%%%#%%@@@%@@@@@@@@@@@*-               
+                    ..=@@@@@@@@@@@@@@%%@@@@%%######%%#######%%%@@%%@@@@@@@@@@@@@@*:.                
+                      ..-*@@@@@@@@@@@@@@@@@@@%%%%%%%%%%%%%%@@@@@@@@@@@@@@@@@@@#=:.                  
+                          .=#%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%+:.                     
+                            ..-*@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%=...                       
+                                .:=+#%@@@@@@@@@@@@@@@@@@@@@@@@@@@@%#*=-:                            
+                                      .-=*###%%%%@@@@@@%%%%###*+-..                                 
+                                         .......................                  
+EOF
+    echo -e "${NC}"
+    echo ""
+    echo -e "${CYAN}🚀 Premium RPC Service Available!${NC}"
+    echo ""
+    echo "Looking for unlimited call/request RPC? Join our Discord community!"
+    echo ""
+    echo -e "${GREEN}📞 Contact Information:${NC}"
+    echo -e "${YELLOW}Discord Server: https://discord.gg/NPDtaCAu${NC}"
+    echo -e "${YELLOW}Contact Person: .jobijoba${NC}"
+    echo ""
+    echo -e "${BLUE}✨ Premium Features:${NC}"
+    echo "• 🚀 Unlimited API calls"
+    echo "• ⚡ High-speed RPC endpoints"
+    echo "• 🛡️ 24/7 professional support"
+    echo "• 🌐 Multiple blockchain networks"
+    echo "• 📊 Premium rate limits"
+    echo "• 💎 Priority routing"
+    echo "• 🔒 Enhanced security"
+    echo ""
+    echo -e "${PURPLE}🎯 How to get started:${NC}"
+    echo "1. Join the Discord server: https://discord.gg/NPDtaCAu"
+    echo "2. Look for user: .jobijoba"
+    echo "3. Send a direct message about RPC services"
+    echo "4. Get your premium RPC endpoint"
+    echo "5. Enjoy unlimited calls!"
+    echo ""
+    echo -e "${CYAN}🔗 Alternative RPC Providers:${NC}"
+    echo "• Alchemy: https://www.alchemy.com/"
+    echo "• Infura: https://infura.io/"
+    echo "• QuickNode: https://www.quicknode.com/"
+    echo "• GetBlock: https://getblock.io/"
+    echo ""
+    
+    read -p "Would you like to open the Discord link? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if command_exists xdg-open; then
+            xdg-open "https://discord.gg/NPDtaCAu"
+        elif command_exists open; then
+            open "https://discord.gg/NPDtaCAu"
+        else
+            echo "Please manually open: https://discord.gg/NPDtaCAu"
+        fi
+        print_status "Discord link opened!"
+    fi
+    
+    read -p "Press Enter to continue..."
+}
+
+# Function to check system status
+check_system() {
+    print_header "System Status Check"
+    
+    # Check system resources
+    echo -e "${CYAN}System Resources:${NC}"
+    echo "CPU Usage: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)%"
+    echo "Memory Usage: $(free -h | awk '/^Mem:/ {print $3 "/" $2}')"
+    echo "Disk Usage: $(df -h / | awk 'NR==2 {print $5}')"
+    
+    # Check Docker containers
+    echo -e "\n${CYAN}Docker Containers:${NC}"
+    if command_exists docker; then
+        docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    else
+        echo "Docker not installed"
+    fi
+    
+    # Check Drosera processes
+    echo -e "\n${CYAN}Drosera Processes:${NC}"
+    if pgrep -f "drosera" > /dev/null; then
+        ps aux | grep drosera | grep -v grep
+    else
+        echo "No Drosera processes running"
+    fi
+    
+    # Check network ports
+    echo -e "\n${CYAN}Network Ports:${NC}"
+    netstat -tlnp 2>/dev/null | grep -E ":(31313|31314|31315|31316)" || echo "No Drosera ports listening"
+    
+    # Check firewall status
+    echo -e "\n${CYAN}Firewall Status:${NC}"
+    if command_exists ufw; then
+        sudo ufw status
+    elif command_exists firewall-cmd; then
+        sudo firewall-cmd --list-all
+    else
+        echo "No supported firewall detected"
+    fi
+}
+
+# Function to monitor logs
+monitor_logs() {
+    print_header "Monitoring Logs"
+    
+    echo "1. View operator logs"
+    echo "2. View trap logs"
+    echo "3. Check trap response status"
+    echo "4. Bridge logs from Docker containers"
+    echo "5. Back to main menu"
+    
+    read -p "Select option: " log_option
+    
+    case $log_option in
+        1)
+            if [[ -d "$OPERATOR_DIR" ]]; then
+                cd "$OPERATOR_DIR"
+                echo "Viewing operator logs (Ctrl+C to exit)..."
+                docker-compose logs -f
+            else
+                print_error "Operator directory not found"
+            fi
+            ;;
+        2)
+            if [[ -d "$TRAP_DIR" ]]; then
+                cd "$TRAP_DIR"
+                echo "Trap logs would be here..."
+                # Add trap log viewing logic
+            else
+                print_error "Trap directory not found"
+            fi
+            ;;
+        3)
+            check_trap_status
+            ;;
+        4)
+            bridge_docker_logs
+            ;;
+        5)
+            return
+            ;;
+        *)
+            print_error "Invalid option"
+            ;;
+    esac
+}
+
+# Function to check trap status
+check_trap_status() {
+    print_header "Trap Response Status Check"
+    
+    if [[ ! -d "$TRAP_DIR" ]]; then
+        print_error "Trap directory not found"
+        return
+    fi
+    
+    cd "$TRAP_DIR"
+    
+    # Check if drosera.toml exists
+    if [[ ! -f "drosera.toml" ]]; then
+        print_error "drosera.toml not found"
+        return
+    fi
+    
+    # Extract trap address from config
+    TRAP_ADDRESS=$(grep "address" drosera.toml | cut -d'"' -f2)
+    
+    if [[ "$TRAP_ADDRESS" == "YOUR_TRAP_CONFIG_ADDRESS" ]]; then
+        print_warning "Please configure your trap address in drosera.toml"
+        return
+    fi
+    
+    print_status "Checking trap status for: $TRAP_ADDRESS"
+    
+    # Check response contract
+    RESPONSE_CONTRACT=$(grep "response_contract" drosera.toml | cut -d'"' -f2)
+    
+    if [[ -n "$RESPONSE_CONTRACT" ]]; then
+        print_status "Response contract: $RESPONSE_CONTRACT"
+        
+        # Check if trap is responding (this would require actual blockchain interaction)
+        echo "Trap status check completed"
+        echo "For detailed status, visit: https://app.drosera.io/"
+    fi
+}
+
+# Function to bridge Docker logs
+bridge_docker_logs() {
+    print_header "Bridge Docker Container Logs"
+    
+    if [[ ! -d "$OPERATOR_DIR" ]]; then
+        print_error "Operator directory not found"
+        return
+    fi
+    
+    cd "$OPERATOR_DIR"
+    
+    # Check if docker-compose.yaml exists
+    if [[ ! -f "docker-compose.yaml" ]]; then
+        print_error "docker-compose.yaml not found"
+        return
+    fi
+    
+    # Get container names
+    CONTAINERS=$(docker-compose ps -q)
+    
+    if [[ -z "$CONTAINERS" ]]; then
+        print_warning "No containers running"
+        return
+    fi
+    
+    echo "Available containers:"
+    docker-compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+    
+    echo -e "\nLog bridging options:"
+    echo "1. Bridge all operator logs"
+    echo "2. Bridge specific operator logs"
+    echo "3. Bridge to file"
+    
+    read -p "Select option: " bridge_option
+    
+    case $bridge_option in
+        1)
+            print_status "Bridging all operator logs..."
+            docker-compose logs -f --tail=100
+            ;;
+        2)
+            read -p "Enter container name: " container_name
+            if docker ps | grep -q "$container_name"; then
+                print_status "Bridging logs for $container_name..."
+                docker logs -f --tail=100 "$container_name"
+            else
+                print_error "Container not found"
+            fi
+            ;;
+        3)
+            read -p "Enter log file path: " log_file
+            print_status "Bridging logs to $log_file..."
+            docker-compose logs -f > "$log_file" 2>&1 &
+            print_status "Logs are being written to $log_file (PID: $!)"
+            ;;
+        *)
+            print_error "Invalid option"
+            ;;
+    esac
+}
+
+# Function to reconfigure UFW
+reconfigure_ufw() {
+    print_header "Reconfigure UFW Firewall"
+    
+    if ! command_exists ufw; then
+        print_error "UFW not installed. Installing now..."
+        sudo apt-get update
+        sudo apt-get install -y ufw
+    fi
+    
+    echo "Current UFW status:"
+    sudo ufw status
+    
+    echo -e "\nUFW configuration options:"
+    echo "1. Reset and apply Drosera configuration"
+    echo "2. Add custom port"
+    echo "3. Remove custom port"
+    echo "4. Enable/Disable UFW"
+    echo "5. Show UFW status"
+    echo "6. Back to main menu"
+    
+    read -p "Select option: " ufw_option
+    
+    case $ufw_option in
+        1)
+            print_status "Resetting UFW rules and applying Drosera configuration..."
+            echo "y" | sudo ufw reset
+            sudo ufw default deny incoming
+            sudo ufw default allow outgoing
+            
+            # Apply the exact configuration you specified
+            print_status "Enabling firewall with SSH access..."
+            sudo ufw allow ssh
+            sudo ufw allow 22
+            sudo ufw --force enable
+            
+            print_status "Allowing Drosera ports..."
+            sudo ufw allow 31313/tcp
+            sudo ufw allow 31314/tcp
+            
+            # Check if we need additional ports
+            local env_file="$TRAP_DIR/.env"
+            if [[ -f "$env_file" ]]; then
+                source "$env_file"
+                if [[ -n "$OPERATOR2_PRIVATE_KEY" ]]; then
+                    print_status "Adding additional operator ports..."
+                    sudo ufw allow 31315/tcp
+                    sudo ufw allow 31316/tcp
+                fi
+            fi
+            
+            print_status "✅ UFW configured with Drosera settings!"
+            sudo ufw status
+            ;;
+        2)
+            read -p "Enter port number: " port
+            read -p "Enter protocol (tcp/udp): " protocol
+            sudo ufw allow $port/$protocol
+            print_status "Port $port/$protocol added"
+            ;;
+        3)
+            read -p "Enter port number: " port
+            read -p "Enter protocol (tcp/udp): " protocol
+            sudo ufw delete allow $port/$protocol
+            print_status "Port $port/$protocol removed"
+            ;;
+        4)
+            if sudo ufw status | grep -q "Status: active"; then
+                echo "y" | sudo ufw disable
+                print_status "UFW disabled"
+            else
+                sudo ufw --force enable
+                print_status "UFW enabled"
+            fi
+            ;;
+        5)
+            print_status "Current UFW status:"
+            sudo ufw status numbered
+            ;;
+        6)
+            return
+            ;;
+        *)
+            print_error "Invalid option"
+            ;;
+    esac
+}
+
+# Function to verify system
+verify_system() {
+    print_header "System Verification"
+    
+    # Check all components
+    echo "Verifying system components..."
+    
+    # Check Docker
+    if command_exists docker; then
+        echo -e "${GREEN}✓${NC} Docker is installed"
+        if docker info >/dev/null 2>&1; then
+            echo -e "${GREEN}✓${NC} Docker daemon is running"
+        else
+            echo -e "${RED}✗${NC} Docker daemon is not running"
+        fi
+    else
+        echo -e "${RED}✗${NC} Docker is not installed"
+    fi
+    
+    # Check Docker Compose
+    if command_exists docker-compose; then
+        echo -e "${GREEN}✓${NC} Docker Compose is installed"
+    else
+        echo -e "${RED}✗${NC} Docker Compose is not installed"
+    fi
+    
+    # Check Forge
+    if command_exists forge; then
+        echo -e "${GREEN}✓${NC} Forge is installed"
+    else
+        echo -e "${RED}✗${NC} Forge is not installed"
+    fi
+    
+    # Check Drosera CLI
+    if command_exists drosera; then
+        echo -e "${GREEN}✓${NC} Drosera CLI is installed"
+    else
+        echo -e "${RED}✗${NC} Drosera CLI is not installed"
+    fi
+    
+    # Check directories
+    if [[ -d "$TRAP_DIR" ]]; then
+        echo -e "${GREEN}✓${NC} Trap directory exists: $TRAP_DIR"
+    else
+        echo -e "${YELLOW}⚠${NC} Trap directory not found: $TRAP_DIR"
+    fi
+    
+    if [[ -d "$OPERATOR_DIR" ]]; then
+        echo -e "${GREEN}✓${NC} Operator directory exists: $OPERATOR_DIR"
+    else
+        echo -e "${YELLOW}⚠${NC} Operator directory not found: $OPERATOR_DIR"
+    fi
+    
+    # Check configuration files
+    if [[ -f "$DROSERA_CONFIG" ]]; then
+        echo -e "${GREEN}✓${NC} drosera.toml exists"
+    else
+        echo -e "${YELLOW}⚠${NC} drosera.toml not found"
+    fi
+    
+    if [[ -f "$DOCKER_COMPOSE_FILE" ]]; then
+        echo -e "${GREEN}✓${NC} docker-compose.yaml exists"
+    else
+        echo -e "${YELLOW}⚠${NC} docker-compose.yaml not found"
+    fi
+    
+    # Check network connectivity
+    echo -e "\n${CYAN}Network Connectivity:${NC}"
+    if curl -s --connect-timeout 5 https://ethereum-hoodi-rpc.publicnode.com >/dev/null; then
+        echo -e "${GREEN}✓${NC} Hoodi RPC accessible"
+    else
+        echo -e "${RED}✗${NC} Hoodi RPC not accessible"
+    fi
+    
+    if curl -s --connect-timeout 5 https://relay.hoodi.drosera.io >/dev/null; then
+        echo -e "${GREEN}✓${NC} Drosera relay accessible"
+    else
+        echo -e "${RED}✗${NC} Drosera relay not accessible"
+    fi
+    
+    print_status "System verification completed"
+}
+
+# Main menu function
+main_menu() {
+    while true; do
+        clear
+        echo -e "${CYAN}"
+        cat << 'EOF'
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                                                                             ║
+║   ██████╗ ██████╗  ██████╗ ███████╗███████╗██████╗  █████╗                 ║
+║   ██╔══██╗██╔══██╗██╔═══██╗██╔════╝██╔════╝██╔══██╗██╔══██╗                ║
+║   ██║  ██║██████╔╝██║   ██║███████╗█████╗  ██████╔╝███████║                ║
+║   ██║  ██║██╔══██╗██║   ██║╚════██║██╔══╝  ██╔══██╗██╔══██║                ║
+║   ██████╔╝██║  ██║╚██████╔╝███████║███████╗██║  ██║██║  ██║                ║
+║   ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝                ║
+║                                                                             ║
+║           ███╗   ███╗ █████╗ ███╗   ██╗ █████╗  ██████╗ ███████╗██████╗    ║
+║           ████╗ ████║██╔══██╗████╗  ██║██╔══██╗██╔════╝ ██╔════╝██╔══██╗   ║
+║           ██╔████╔██║███████║██╔██╗ ██║███████║██║  ███╗█████╗  ██████╔╝   ║
+║           ██║╚██╔╝██║██╔══██║██║╚██╗██║██╔══██║██║   ██║██╔══╝  ██╔══██╗   ║
+║           ██║ ╚═╝ ██║██║  ██║██║ ╚████║██║  ██║╚██████╔╝███████╗██║  ██║   ║
+║           ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝   ║
+║                                                                             ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+EOF
+        echo -e "${NC}"
+        echo ""
+        echo -e "${GREEN}                    🌱 ${PURPLE}Drosera Manager${GREEN} powered by ${YELLOW}0xm3th${GREEN} 🌱${NC}"
+        echo -e "${CYAN}                 If you found issue send me a dm directly: ${YELLOW}0xm3th${NC}"
+        echo ""
+        print_header "Main Menu"
+        echo "1. Install Dependencies"
+        echo "2. Deploy new trap"
+        echo "3. Deploy for Discord Cadet role"
+        echo "4. Relocate your Drosera to this machine"
+        echo "5. Buy unlimited call/request RPC"
+        echo "6. Send bloom boost"
+        echo "7. Opt-in operators"
+        echo "8. Check system"
+        echo "9. Monitoring logs"
+        echo "10. Reconfigure UFW"
+        echo "11. Verify system"
+        echo "12. Exit"
+        echo
+        read -p "Select option: " choice
+        
+        case $choice in
+            1)
+                install_dependencies
+                ;;
+            2)
+                deploy_new_trap
+                ;;
+            3)
+                deploy_discord_cadet_trap
+                ;;
+            4)
+                relocate_drosera
+                ;;
+            5)
+                buy_rpc
+                ;;
+            6)
+                send_bloom_boost
+                ;;
+            7)
+                optin_operators
+                ;;
+            8)
+                check_system
+                ;;
+            9)
+                monitor_logs
+                ;;
+            10)
+                reconfigure_ufw
+                ;;
+            11)
+                verify_system
+                ;;
+            12)
+                print_status "Exiting Drosera Network Manager"
+                exit 0
+                ;;
+            *)
+                print_error "Invalid option. Please try again."
+                ;;
+        esac
+        
+        echo
+        read -p "Press Enter to continue..."
+    done
+}
+
+# Main execution
+main() {
+    # Check if script is run as root
+    if [[ $EUID -eq 0 ]]; then
+        print_error "This script should not be run as root"
+        exit 1
+    fi
+    
+    # Check system requirements
+    if ! check_system_requirements; then
+        print_error "System requirements not met"
+        read -p "Do you want to install dependencies? (y/n): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            install_dependencies
+        else
+            exit 1
+        fi
+    fi
+    
+    # Create necessary directories
+    mkdir -p "$DROSERA_HOME"
+    mkdir -p "$TRAP_DIR"
+    mkdir -p "$OPERATOR_DIR"
+    
+    # Start main menu
+    main_menu
+}
+
+# Run main function
+main "$@"

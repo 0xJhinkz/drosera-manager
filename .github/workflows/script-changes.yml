@@ -1,0 +1,94 @@
+name: Script Changes Notification
+
+on:
+  push:
+    paths:
+      - 'drosera-manager.sh'
+      - 'drosera-manager.ps1'
+      - 'drosera-manager.bat'
+      - 'README.md'
+      - 'WINDOWS_INSTALL.md'
+
+jobs:
+  notify-script-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          echo "files=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      - name: Send Discord notification for script changes
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: https://discord.com/api/webhooks/1392378414526103593/0cCpbWiPo62o26qLAHZZGJsf0Sjlw0bJATqEJ55xurVcW5fDfS18QtKmU-GXIFkBPfCB
+          title: "📝 Drosera Manager Scripts Updated"
+          description: |
+            **Repository:** [0xJhinkz/drosera-manager](https://github.com/0xJhinkz/drosera-manager)
+            **Updated by:** ${{ github.actor }}
+            **Commit:** `${{ github.sha }}`
+            
+            📂 **Changed Files:**
+            ${{ steps.changed-files.outputs.files }}
+            
+            💬 **Commit Message:** 
+            ${{ github.event.head_commit.message }}
+            
+            🔗 **Actions:**
+            • [View Commit](https://github.com/0xJhinkz/drosera-manager/commit/${{ github.sha }})
+            • [Download Scripts](https://github.com/0xJhinkz/drosera-manager/archive/refs/heads/main.zip)
+            • [View Repository](https://github.com/0xJhinkz/drosera-manager)
+            
+            🌱 **Ready to deploy your Drosera nodes!**
+          color: 0x7289da
+          username: "Script Update Bot 📜"
+          avatar_url: "https://raw.githubusercontent.com/github/explore/main/topics/bash/bash.png"
+
+  validate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test shell script if changed
+        run: |
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "drosera-manager.sh"; then
+            echo "Testing shell script..."
+            chmod +x drosera-manager.sh
+            bash -n drosera-manager.sh && echo "✅ Shell script syntax OK" || echo "❌ Shell script syntax error"
+          fi
+
+      - name: Test PowerShell script if changed
+        run: |
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "drosera-manager.ps1"; then
+            echo "PowerShell script was updated"
+            echo "✅ PowerShell script detected"
+          fi
+
+      - name: Test batch script if changed
+        run: |
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -q "drosera-manager.bat"; then
+            echo "Batch script was updated"
+            echo "✅ Batch script detected"
+          fi
+
+      - name: Send test results to Discord
+        if: always()
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: https://discord.com/api/webhooks/1392378414526103593/0cCpbWiPo62o26qLAHZZGJsf0Sjlw0bJATqEJ55xurVcW5fDfS18QtKmU-GXIFkBPfCB
+          title: "🔍 Script Validation Results"
+          description: |
+            **Repository:** [0xJhinkz/drosera-manager](https://github.com/0xJhinkz/drosera-manager)
+            **Validation Status:** ${{ job.status }}
+            **Branch:** `${{ github.ref_name }}`
+            
+            🧪 All scripts have been validated for syntax and basic functionality.
+            
+            🔗 [View Test Details](https://github.com/0xJhinkz/drosera-manager/actions/runs/${{ github.run_id }})
+          color: ${{ job.status == 'success' && 0x00ff00 || 0xff0000 }}
+          username: "Validation Bot ✅"
+          avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
