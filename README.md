@@ -5,10 +5,10 @@ A comprehensive Linux shell script for managing Drosera Network nodes, traps, an
 ## Overview
 
 This bash script provides an interactive menu-driven interface for:
-- Deploying new Drosera traps with proper configuration and operator registration
+- Deploying new Drosera traps with proper configuration, operator registration, and 1 ETH bloom boost
 - Setting up Discord Cadet role traps for community roles
 - Relocating existing Drosera nodes to your machine
-- Managing bloom boost functionality for trap performance
+- Managing additional bloom boost functionality for trap performance
 - Monitoring system status and logs via local containers or app.drosera.io
 - Managing firewall configurations and system verification
 
@@ -20,7 +20,7 @@ This bash script provides an interactive menu-driven interface for:
 3. **Deploy for Discord Cadet role** - Special setup for Discord role verification
 4. **Relocate your Drosera** - Move existing Drosera nodes to this machine
 5. **Buy unlimited call/request RPC** - Premium RPC service access via Discord
-6. **Send bloom boost** - Boost your trap performance
+6. **Send bloom boost** - Send additional boost to your trap (beyond initial 1 ETH deployment boost)
 7. **Check system** - Monitor system resources and Drosera processes
 8. **Monitoring logs** - View and bridge logs from Docker containers or app.drosera.io
 9. **Reconfigure UFW** - Manage firewall rules and ports
@@ -89,7 +89,8 @@ All configuration is saved to `.env` file for future use and Docker Compose inte
 3. The script creates embedded Foundry template with proper structure
 4. Builds and deploys your trap contract
 5. Automatically registers operators to your trap during deployment
-6. Updates `drosera.toml` with your configuration and operator addresses
+6. Sends bloom boost (defaults to 1 ETH) to boost trap performance
+7. Updates `drosera.toml` with your configuration and operator addresses
 
 ### Discord Cadet Role Setup
 1. Select option **3** from the main menu
@@ -98,9 +99,10 @@ All configuration is saved to `.env` file for future use and Docker Compose inte
 4. Deploys the trap for community role verification
 
 ### Managing Operations
-- **Send Bloom Boost** (Option 6): Boost your trap performance
+- **Send Bloom Boost** (Option 6): Additional boost for your trap performance (separate from deployment boost)
 - **Relocate Drosera** (Option 4): Move existing nodes with Docker Compose setup
 - **Operator Registration**: Automatically handled during trap deployment (Option 2)
+- **Initial Bloom Boost**: Automatically sent during trap deployment (defaults to 1 ETH)
 
 ### Monitoring and Maintenance
 - **System Check** (Option 7): Monitor CPU, memory, disk usage, and Docker containers
