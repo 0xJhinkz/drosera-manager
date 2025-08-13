@@ -158,33 +158,160 @@ volumes:
 ```
 
 ### .env
-Located in `~/my-drosera-trap/.env`
+The `.env` file is used for both development and Docker configurations.
 ```bash
-# Network Configuration
-ETH_RPC_URL=https://your-rpc-url-here
+# ===========================================
+# Drosera Node Configuration (for Docker)
+# ===========================================
+
+# Required: Your Ethereum private key for the node (without 0x prefix)
+ETH_PRIVATE_KEY=your_private_key_here
+
+# Required: Your VPS external IP address
+VPS_IP=your_vps_ip_here
+
+# Optional: Ethereum RPC URLs (both should be the same)
+ETH_RPC_URL=https://rpc.hoodi.ethpandaops.io
 ETH_BACKUP_RPC_URL=https://rpc.hoodi.ethpandaops.io
+
+# Optional: Drosera contract address (default provided)
+DROSERA_ADDRESS=0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D
+
+# ===========================================
+# Development/Deployment Configuration
+# ===========================================
+
+# Network Configuration
 ETH_CHAIN_ID=560048
 DROSERA_ADDRESS=0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D
 
 # Private Keys
-DROSERA_PRIVATE_KEY=your_private_key_here
-ETH_PRIVATE_KEY=your_private_key_here
+PRIVATE_KEY=your_private_key_here
 
-# Server Configuration
-VPS_IP=your.server.ip
-SERVER_IP=your.server.ip
+# RPC Configuration
+RPC_URL=https://ethereum-hoodi-rpc.publicnode.com
 
 # Operator Configuration
 OPERATOR_ADDRESS_1=0x...
 OPERATOR_ADDRESS_2=0x...
 
 # Trap Configuration
-TRAP_CONFIG_ADDRESS=0x...
 RESPONSE_CONTRACT=0x25E2CeF36020A736CF8a4D2cAdD2EBE3940F4608
 
 # Discord Configuration
 DISCORD_USERNAME=your_discord_username
+
+# Etherscan API (optional)
+ETHERSCAN_API_KEY=your_etherscan_api_key_here
 ```
+
+## Docker Setup (Alternative Method)
+
+In addition to the interactive manager script, you can run Drosera nodes using Docker Compose for containerized deployment.
+
+### Docker Files
+
+- `docker-compose.yml` - Main Docker Compose configuration
+- `env.example` - Environment variables template (use for both development and Docker)
+- `start-drosera.sh` - Linux start script
+- `stop-drosera.sh` - Linux stop script
+- `monitor-drosera.sh` - Linux monitoring script
+
+### Docker Quick Start
+
+#### 1. Prerequisites
+- Docker and Docker Compose installed
+- Your Ethereum private key
+- Your server's external IP address
+
+#### 2. Configure Environment
+Copy the environment template and fill in your values:
+```bash
+cp env.example .env
+nano .env
+```
+
+#### 3. Required Docker Configuration
+Edit `.env` and set these required values for Docker:
+```env
+ETH_PRIVATE_KEY=your_ethereum_private_key_here
+VPS_IP=your_server_external_ip_here
+```
+
+#### 4. Start the Docker Node
+```bash
+chmod +x start-drosera.sh stop-drosera.sh monitor-drosera.sh
+./start-drosera.sh
+```
+
+#### 5. Monitor the Docker Node
+```bash
+# Show status and basic info
+./monitor-drosera.sh status
+
+# Follow logs in real-time
+./monitor-drosera.sh follow
+
+# Show all monitoring information
+./monitor-drosera.sh all
+
+# View logs directly
+docker-compose logs -f
+```
+
+#### 6. Stop the Docker Node
+```bash
+./stop-drosera.sh
+```
+
+### Docker Configuration Details
+
+The Docker setup mirrors the systemd service configuration:
+
+- **Database file**: `/home/drosera/.drosera/drosera.db` (mapped to `./data/drosera.db`)
+- **P2P port**: 31313
+- **Server port**: 31314
+- **ETH RPC URL**: `https://rpc.hoodi.ethpandaops.io` (same as backup)
+- **ETH Backup RPC URL**: `https://rpc.hoodi.ethpandaops.io` (same as primary)
+- **Drosera contract**: `0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D` (configurable)
+- **Network mode**: Host (direct access to server network)
+- **File limits**: 65535 (matches systemd configuration)
+
+### Docker Data Persistence
+
+- **Database and node data**: `./data/` directory (mapped to `/home/drosera/.drosera/` in container)
+- **Logs**: `./logs/` directory (mapped to `/var/log/drosera/` in container)
+
+**Important:** Data directories have proper read/write permissions set automatically.
+
+### Docker Troubleshooting
+
+#### Check if Docker is running:
+```bash
+docker info
+```
+
+#### View detailed logs:
+```bash
+docker-compose logs drosera-node
+```
+
+#### Restart the service:
+```bash
+docker-compose restart
+```
+
+#### Reset everything (CAUTION - deletes data):
+```bash
+docker-compose down -v
+rm -rf data/ logs/
+```
+
+### Docker Security Notes
+
+- Keep your `.env` file secure and never commit it to version control
+- The private key in `.env` has full access to your Ethereum account
+- Consider using a dedicated key for the Drosera node
 
 ## Port Configuration
 

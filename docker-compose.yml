@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  drosera-node:
+    image: drosera/operator:latest  # Replace with actual Drosera Docker image
+    container_name: drosera-node
+    restart: unless-stopped
+    network_mode: "host"  # Use host networking for better P2P connectivity
+    volumes:
+      - ./data:/home/drosera/.drosera:rw  # Database and data directory with read/write permissions
+      - ./logs:/var/log/drosera:rw        # Logs directory with read/write permissions
+    env_file:
+      - .env
+    environment:
+      - HOME=/home/drosera
+      - USER=drosera
+      - DROSERA_HOME=/home/drosera/.drosera
+    working_dir: /home/drosera
+    command: >
+      sh -c "
+      # Ensure data directory exists and has correct permissions
+      mkdir -p /home/drosera/.drosera && 
+      chown -R 1000:1000 /home/drosera/.drosera /var/log/drosera &&
+      # Start the drosera operator
+      drosera-operator node 
+      --db-file-path /home/drosera/.drosera/drosera.db
+      --network-p2p-port 31313
+      --server-port 31314
+      --eth-rpc-url \"$${ETH_RPC_URL:-https://rpc.hoodi.ethpandaops.io}\"
+      --eth-backup-rpc-url \"$${ETH_BACKUP_RPC_URL:-https://rpc.hoodi.ethpandaops.io}\"
+      --drosera-address \"$${DROSERA_ADDRESS:-0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D}\"
+      --eth-private-key \"$${ETH_PRIVATE_KEY}\"
+      --listen-address 0.0.0.0
+      --network-external-p2p-address \"$${VPS_IP}\"
+      --disable-dnr-confirmation true
+      "
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    healthcheck:
+      test: ["CMD", "sh", "-c", "netstat -tlnp | grep :31314 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    user: "root"  # Start as root to set permissions, then the app can drop privileges if needed
+
+volumes:
+  drosera-data:
+    driver: local
+  drosera-logs:
+    driver: local
