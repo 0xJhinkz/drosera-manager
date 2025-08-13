@@ -5,28 +5,27 @@ A comprehensive Linux shell script for managing Drosera Network nodes, traps, an
 ## Overview
 
 This bash script provides an interactive menu-driven interface for:
-- Deploying new Drosera traps with proper configuration
+- Deploying new Drosera traps with proper configuration and operator registration
 - Setting up Discord Cadet role traps for community roles
 - Relocating existing Drosera nodes to your machine
-- Managing operators with bloom boost and opt-in functionality
-- Monitoring system status and logs
+- Managing bloom boost functionality for trap performance
+- Monitoring system status and logs via local containers or app.drosera.io
 - Managing firewall configurations and system verification
 
 ## Features
 
 ### 🎯 Main Menu Options
 1. **Install Dependencies** - Set up all required tools and dependencies
-2. **Deploy new trap** - Create and deploy a new Drosera trap
+2. **Deploy new trap** - Create and deploy a new Drosera trap (includes operator registration)
 3. **Deploy for Discord Cadet role** - Special setup for Discord role verification
 4. **Relocate your Drosera** - Move existing Drosera nodes to this machine
 5. **Buy unlimited call/request RPC** - Premium RPC service access via Discord
 6. **Send bloom boost** - Boost your trap performance
-7. **Opt-in operators** - Register operators to your trap
-8. **Check system** - Monitor system resources and Drosera processes
-9. **Monitoring logs** - View and bridge logs from Docker containers
-10. **Reconfigure UFW** - Manage firewall rules and ports
-11. **Verify system** - Comprehensive system component verification
-12. **Exit** - Close the application
+7. **Check system** - Monitor system resources and Drosera processes
+8. **Monitoring logs** - View and bridge logs from Docker containers or app.drosera.io
+9. **Reconfigure UFW** - Manage firewall rules and ports
+10. **Verify system** - Comprehensive system component verification
+11. **Exit** - Close the application
 
 ### 🔧 System Requirements
 - **OS**: Linux (Ubuntu/Debian recommended)
@@ -89,7 +88,8 @@ All configuration is saved to `.env` file for future use and Docker Compose inte
 2. Configure your settings (RPC URL, private key, etc.)
 3. The script creates embedded Foundry template with proper structure
 4. Builds and deploys your trap contract
-5. Updates `drosera.toml` with your configuration
+5. Automatically registers operators to your trap during deployment
+6. Updates `drosera.toml` with your configuration and operator addresses
 
 ### Discord Cadet Role Setup
 1. Select option **3** from the main menu
@@ -97,16 +97,16 @@ All configuration is saved to `.env` file for future use and Docker Compose inte
 3. The script creates a specialized Discord verification trap
 4. Deploys the trap for community role verification
 
-### Managing Operators
+### Managing Operations
 - **Send Bloom Boost** (Option 6): Boost your trap performance
-- **Opt-in Operators** (Option 7): Register operators to your trap
 - **Relocate Drosera** (Option 4): Move existing nodes with Docker Compose setup
+- **Operator Registration**: Automatically handled during trap deployment (Option 2)
 
 ### Monitoring and Maintenance
-- **System Check** (Option 8): Monitor CPU, memory, disk usage, and Docker containers
-- **Log Monitoring** (Option 9): View real-time logs, check trap status, bridge logs to files
-- **Firewall Management** (Option 10): Add/remove ports, reset UFW rules
-- **System Verification** (Option 11): Comprehensive health check of all components
+- **System Check** (Option 7): Monitor CPU, memory, disk usage, and Docker containers
+- **Log Monitoring** (Option 8): View real-time logs via local Docker containers or app.drosera.io
+- **Firewall Management** (Option 9): Add/remove ports, reset UFW rules
+- **System Verification** (Option 10): Comprehensive health check of all components
 
 ## Configuration Files
 
@@ -368,7 +368,10 @@ sudo ufw --force enable
 
 ### Log Analysis
 
-#### Check operator logs
+#### Option 1: View logs via app.drosera.io (Recommended)
+Visit [app.drosera.io](https://app.drosera.io) to view comprehensive logs and node status from the web interface.
+
+#### Option 2: Check operator logs locally
 ```bash
 cd ~/Drosera-Network
 docker-compose logs -f operator1
